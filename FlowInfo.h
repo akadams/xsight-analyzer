@@ -40,8 +40,8 @@ class FlowInfo {
   in_port_t src_port_;
   string dst_ip_;
   in_port_t dst_port_;
-  double start_time_;
-  double end_time_;
+  int64_t start_time_;
+  int64_t end_time_;
   double DataOctetsIn_;
   int DupAcksIn_;
   int Timeouts_;

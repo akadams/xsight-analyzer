@@ -772,7 +772,7 @@ void analyzer_process_response(const ConfInfo& info, const MsgHdr& msg_hdr,
 
             // Sanity check values ...
             if (!anon_array[0].IsNumber() || !anon_array[1].IsString() ||
-                !anon_array[2].IsDouble()) {
+                !anon_array[2].IsNumber()) {
               error.Init(EX_DATAERR, "analyzer_process_response(): "
                          "Either time, flow or value is incorrect type "
                          "within values[%d] (EndTime) from %s: %s",
@@ -781,7 +781,7 @@ void analyzer_process_response(const ConfInfo& info, const MsgHdr& msg_hdr,
             }
             uint64_t time_ns = anon_array[0].GetInt64();
             string flow = anon_array[1].GetString();
-            double end_time = anon_array[2].GetDouble();
+            int64_t end_time = anon_array[2].GetInt64();
 
             // Process, depending on whether this is a *new* flow or not.
 #if DEBUG_MUTEX_LOCK

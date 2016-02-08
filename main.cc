@@ -552,7 +552,7 @@ int main(int argc, char* argv[]) {
           }
 
         if (debug_print_cnt == 0)
-          logger.Log(LOG_DEBUG, "main(timeout): checking if to_peer: %s, can be removed (IsConnected, IsOutgoingDataPending, rbuf_len, IsIncomingMsgInitialized): %d, %d, %d, %d.", to_peer->print().c_str(), to_peer->IsConnected(), to_peer->IsOutgoingDataPending(), (int)to_peer->rbuf_len(), to_peer->IsIncomingMsgInitialized());
+          logger.Log(LOG_NOTICE, "main(timeout): checking if to_peer: %s, can be removed (IsConnected, IsOutgoingDataPending, rbuf_len, IsIncomingMsgInitialized): %d, %d, %d, %d.", to_peer->print().c_str(), to_peer->IsConnected(), to_peer->IsOutgoingDataPending(), (int)to_peer->rbuf_len(), to_peer->IsIncomingMsgInitialized());
 
           // Finally, see if this peer should be removed.
           if (!to_peer->IsConnected() && 
@@ -715,8 +715,10 @@ int main(int argc, char* argv[]) {
               printf("DEBUG: XXX Executing: %s %s %s\n", mail, arg1, arg2);
 
               // Call mail.
+              /*  XXX Need a box with mail enabled!
               if ((execl(mail, arg1, arg2, (char*)NULL)) == -1)
                 err(EXIT_FAILURE, "main(): execl() failed: ");
+              */
             }
 
             // Update analyzed series for flow to NOTIFIED.
@@ -1327,8 +1329,8 @@ int main(int argc, char* argv[]) {
 
 // Routine to print out "usage" information.
 void usage(void) {
-  fprintf(stderr, "Usage: analyzer [-46htVvq] [-c config_file] "
-          "\t[-d database host] [-D database name]"
+  fprintf(stderr, "Usage: analyzer [-46htVvq] [-c config_file]\n"
+          "\t[-d database host] [-D database name]\n"
           "\t[-l limit for number of unanalyzed flows to request]\n"
           "\t[-L log_device[[:log_level],...]\n"
           "\t[-P database password \"username:password\"] [-p network port]\n");
