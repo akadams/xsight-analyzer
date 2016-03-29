@@ -4,4 +4,6 @@ ip-utils
 rapidjson
 analyzer.log
 foo.trace
+analyzer
+tcp-event-procs.*
 *.o

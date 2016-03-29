@@ -49,6 +49,7 @@ static const in_port_t kServerPort = 13500;  // not used
 static const int kFramingType = MsgHdr::TYPE_HTTP;
 static const int kMaxPeers = 128;
 static const ssize_t kDefaultBufSize = TCPSESSION_DEFAULT_BUFSIZE;
+static const char* kMailRecipients = "akadams@psc.edu";
 
 // Event-loop timeout controls
 static const int state_poll_interval = 86400;  // 24 hours
@@ -323,14 +324,14 @@ int main(int argc, char* argv[]) {
 
         // For Debugging:
         if (debug_print_cnt++ == 0)
-          logger.Log(LOG_NOTICE, "main(): TIMEOUT: "
+          logger.Log(LOG_INFO, "main(): TIMEOUT: "
                      "now: %d, unanalyzed poll: %d, inprogress poll: %d,  "
                      "to_peers(%d), analyzed(%d), flows(%d).",
                      (int)now, unanalyzed_poll, inprogress_poll,
                      (int)to_peers.size(), (int)analyzed.size(),
                      (int)flows.size());
         else
-          if (debug_print_cnt == 10)
+          if (debug_print_cnt == 20)
             debug_print_cnt = 0;
 
         // TIMEOUT-1: See if any of our *read* data in from_peers is complete.
@@ -479,7 +480,10 @@ int main(int argc, char* argv[]) {
         pthread_mutex_unlock(&from_peers_mtx);
 
 
-        // TIMEOUT-2: See if any of our *read* data in to_peers is complete.
+        // TIMEOUT-2: See if any of our *read* data in to_peers is
+        // complete, then see if we have outgoing data ready for
+        // transmission.
+
 #if DEBUG_MUTEX_LOCK
         warnx("main(timeout): requesting to_peers lock.");
 #endif
@@ -517,6 +521,14 @@ int main(int argc, char* argv[]) {
               continue;  // head back to while()
             }
 
+            printf("XXX After read, analyzed(%d): ", analyzed.size());
+            list<AnalyzedInfo>::iterator foo_itr = analyzed.begin();
+            while (foo_itr != analyzed.end()) {
+              printf("%s, ", foo_itr->flow_.c_str());
+              foo_itr++;
+            }
+            printf("\n");
+
             // Head back to while(to_peer) to give
             // analyzer_proccess_incoming_msg() time to update peer's
             // meta-data.
@@ -527,7 +539,7 @@ int main(int argc, char* argv[]) {
             pthread_mutex_unlock(&to_peers_mtx);
             to_peer++;
             continue;
-          }  // if (to_peer->IsIncomingMsgComplet()) {
+          }  // if (to_peer->IsIncomingMsgComplet()) { 
 
           // See if we need to initiate a connection.
           if (to_peer->wbuf_len() && 
@@ -551,8 +563,8 @@ int main(int argc, char* argv[]) {
             } 
           }
 
-        if (debug_print_cnt == 0)
-          logger.Log(LOG_NOTICE, "main(timeout): checking if to_peer: %s, can be removed (IsConnected, IsOutgoingDataPending, rbuf_len, IsIncomingMsgInitialized): %d, %d, %d, %d.", to_peer->print().c_str(), to_peer->IsConnected(), to_peer->IsOutgoingDataPending(), (int)to_peer->rbuf_len(), to_peer->IsIncomingMsgInitialized());
+          if (debug_print_cnt == 0)
+            logger.Log(LOG_INFO, "main(timeout): checking if to_peer: %s, can be removed (IsConnected, IsOutgoingDataPending, rbuf_len, IsIncomingMsgInitialized): %d, %d, %d, %d.", to_peer->print().c_str(), to_peer->IsConnected(), to_peer->IsOutgoingDataPending(), (int)to_peer->rbuf_len(), to_peer->IsIncomingMsgInitialized());
 
           // Finally, see if this peer should be removed.
           if (!to_peer->IsConnected() && 
@@ -584,7 +596,7 @@ int main(int argc, char* argv[]) {
               to_peer = to_peers.erase(to_peer);
             }
 
-            // Skip to next peer.
+            // Skip to next peer (incremented above).
 #if DEBUG_MUTEX_LOCK
             warnx("main(timeout): releasing to_peers lock.");
 #endif
@@ -595,17 +607,17 @@ int main(int argc, char* argv[]) {
           /*
           // TODO(aka) Spot for final check to see if something whet wrong ...
           if (!to_peer->IsIncomingMsgInitialized() && 
-              to_peer->rbuf_len() > 0) {
-            // Something went wrong, report the error and remove the peer.
-            logger.Log(LOG_ERR, "main(): "
-                       "peer (%s) has data in timeout, but not initialized!",
-                       to_peer->print().c_str());
-            to_peer = to_peers.erase(to_peer);
-#if DEBUG_MUTEX_LOCK
-            warnx("main(): releasing to_peers lock.");
-#endif
-            pthread_mutex_unlock(&to_peers_mtx);
-            continue;  // head back to while()
+          to_peer->rbuf_len() > 0) {
+          // Something went wrong, report the error and remove the peer.
+          logger.Log(LOG_ERR, "main(): "
+          "peer (%s) has data in timeout, but not initialized!",
+          to_peer->print().c_str());
+          to_peer = to_peers.erase(to_peer);
+          #if DEBUG_MUTEX_LOCK
+          warnx("main(): releasing to_peers lock.");
+          #endif
+          pthread_mutex_unlock(&to_peers_mtx);
+          continue;  // head back to while()
           } 
           */
 
@@ -631,6 +643,13 @@ int main(int argc, char* argv[]) {
           unanalyzed_poll += kPollIntervalUnanalyzed;
         }  // if (unanalyzed_poll <= now) {
 
+            printf("XXX Before TIMEOUT-4, analyzed(%d): ", analyzed.size());
+            list<AnalyzedInfo>::iterator foo_itr = analyzed.begin();
+            while (foo_itr != analyzed.end()) {
+              printf("%s, ", foo_itr->flow_.c_str());
+              foo_itr++;
+            }
+            printf("\n");
 
         // TIMEOUT-4: Initiate request(s) for unanalyzed flow meta-data.
 #if DEBUG_MUTEX_LOCK
@@ -688,12 +707,23 @@ int main(int argc, char* argv[]) {
             logger.Log(LOG_ERR, "main(): TODO(aka) "
                        "Unable to find %s in analyzed (%d).",
                        flow_itr->flow_.c_str(), (int)analyzed.size());
+          
+          if (analyzed_itr->status_ == kSeriesAnalyzedInprogress) {
+#if DEBUG_MUTEX_LOCK
+            warnx("main(timeout): releasing analyzed lock.");
+#endif
+            pthread_mutex_unlock(&analyzed_mtx);
+
+            flow_itr++;
+            continue;  // skip this flow
+          }
 
           logger.Log(LOG_INFO, "main(): "
                      "Checking flow %s (SrcIP, DupAcksIn, Timeouts): "
-                     "%s, %d, %d.", 
+                     "%s, %d, %d, analyzed status: %d.", 
                      flow_itr->flow_.c_str(), flow_itr->src_ip_.c_str(), 
-                     flow_itr->DupAcksIn_, flow_itr->Timeouts_);
+                     flow_itr->DupAcksIn_, flow_itr->Timeouts_,
+                     analyzed_itr->status_);
 
           // ANALYZER: Just performing very simple tests here!
           // TODO(aka) Eventually, we want to look at the number of
@@ -704,23 +734,26 @@ int main(int argc, char* argv[]) {
           if (flow_itr->DupAcksIn_ > 0 || flow_itr->Timeouts_ > 0) {
             // Send e-mail NOC.
             static const char* mail = "/usr/bin/mail";
-            static const char* arg1 = "-s Analyzer Positive";
-            static const char* arg2 = "akadams@psc.edu";
+            char args[1024];
+            snprintf(args, 1024, "-s \"Investigate %s\" %s", 
+                     flow_itr->flow_.c_str(), kMailRecipients);
 
             pid_t fork_pid;
             if ((fork_pid = fork()) < 0) {
               logger.Log(LOG_ERR, "main(): fork() failed: %s", strerror(errno));
             } else if (fork_pid == 0) {
               // We are the child!
-              printf("DEBUG: XXX Executing: %s %s %s\n", mail, arg1, arg2);
+              printf("DEBUG: XXX Executing: %s %s\n", mail, args);
 
               // Call mail.
               /*  XXX Need a box with mail enabled!
-              if ((execl(mail, arg1, arg2, (char*)NULL)) == -1)
+              if ((execl(mail, args, (char*)NULL)) == -1)
                 err(EXIT_FAILURE, "main(): execl() failed: ");
               */
-            }
 
+              _exit(0);  // sanity check (if exec() or err() are commented out)
+            }
+            exit(0);  // XXX
             // Update analyzed series for flow to NOTIFIED.
             initiate_analyzed_update(conf_info, kSeriesAnalyzedNotified,
                                      &(*analyzed_itr), &ssl_context,
@@ -733,10 +766,9 @@ int main(int argc, char* argv[]) {
 
             // Remove from analyzed & flows.  TODO(aka) We may want to
             // simply mark each for deletion, and then clean them up
-            // in TIMEOUT-7?
+            // in TIMEOUT-7?  E.g., "analyzed_itr->status_ =
+            // kSeriesAnalyzedNotified"
 
-            printf("XXX deleting analyzed & flow for %s.  TODO(aka) mark & wait?\n", analyzed_itr->flow_.c_str());
-            // analyzed_itr->status_ = kSeriesAnalyzedNotified;
             analyzed.erase(analyzed_itr);
             flow_itr = flows.erase(flow_itr);
           } else {
@@ -752,6 +784,8 @@ int main(int argc, char* argv[]) {
               } else {
                 analyzed_itr->status_ = kSeriesAnalyzedInprogress;
               }
+
+              flow_itr++;
             } else {
               // Update analyzed series for flow to COMPLETED.
               initiate_analyzed_update(conf_info, kSeriesAnalyzedCompleted,
@@ -763,24 +797,21 @@ int main(int argc, char* argv[]) {
                 error.clear();
               }
 
-              // Remove from analyzed & flows.  TODO(aka) We may want to
-              // simply mark each for deletion, and then clean them up
-              // in TIMEOUT-7?
+              // Remove from analyzed & flows.  TODO(aka) Again, we
+              // may want to simply mark each for deletion, and then
+              // clean them up in TIMEOUT-7?  E.g.,
+              // "analyzed_itr->status_ = kSeriesAnalyzedCompleted"
 
-              printf("XXX deleting analyzed & flow for %s.  TODO(aka) mark & wait?\n", analyzed_itr->flow_.c_str());
-              // analyzed_itr->status_ = kSeriesAnalyzedCompleted;
               analyzed.erase(analyzed_itr);
               flow_itr = flows.erase(flow_itr);
             }
-          }
+          }  // else if (flow_itr->DupAcksIn_ > 0 || flow_itr->Timeouts_ > 0) {
 
 #if DEBUG_MUTEX_LOCK
           warnx("main(timeout): releasing analyzed lock.");
 #endif
           pthread_mutex_unlock(&analyzed_mtx);
-
-          flow_itr++;
-        }
+        }  // while (flow_itr != flows.end()) {
 
 #if DEBUG_MUTEX_LOCK
         warnx("main(timeout): releasing flow list lock.");
@@ -807,10 +838,39 @@ int main(int argc, char* argv[]) {
                            error.print().c_str());
                 error.clear();
               }
+
+              // Finally, delete the flow and associated analyzed
+              // info, so the flow can be processed a new.
+
+#if DEBUG_MUTEX_LOCK
+              warnx("main(timeout): requesting flow list lock.");
+#endif
+              pthread_mutex_lock(&flow_list_mtx);
+
+              list<FlowInfo>::iterator flow_itr = flows.begin();
+              while (flow_itr != flows.end()) {
+                if (!analyzed_itr->flow_.compare(flow_itr->flow_))
+                  break;
+                
+                flow_itr++;
+              }
+              if (flow_itr == flows.end())
+                logger.Log(LOG_ERR, "main(): TODO(aka) "
+                           "Unable to find AnalyzedInfo %s in flows (%d).",
+                           analyzed_itr->flow_.c_str(), (int)flows.size());
+              
+              flows.erase(flow_itr);
+
+#if DEBUG_MUTEX_LOCK
+              warnx("main(timeout): releasing flow list lock.");
+#endif
+              pthread_mutex_unlock(&flow_list_mtx);
+
+              analyzed_itr = analyzed.erase(analyzed_itr);
+            } else {  // if (analyzed_itr->status_ == kSeriesAnalyzedInprogress) {
+              analyzed_itr++;
             }
-            
-            analyzed_itr++;
-          }
+          }  // while (analyzed_itr != analyzed.end()) {
 
 #if DEBUG_MUTEX_LOCK
           warnx("main(timeout): releasing analyzed lock.");
@@ -823,7 +883,7 @@ int main(int argc, char* argv[]) {
 
         // TIMEOUT-7: Clean-up flow & analyzed lists.
         if (analyzed.size() || flows.size())
-          logger.Log(LOG_NOTICE, "main(): Need to add clean-up work, analyzed(%d), flows(%d).", analyzed.size(), flows.size());
+          logger.Log(LOG_DEBUG, "main(): Need to add clean-up work, analyzed(%d), flows(%d).", analyzed.size(), flows.size());
 
 #if DEBUG_MUTEX_LOCK
         warnx("main(timeout): requesting analyzed lock.");
@@ -1037,14 +1097,20 @@ int main(int argc, char* argv[]) {
                          peer->print().c_str(), error.print().c_str());
               to_peers.erase(peer);  // no threading on to_peers
               error.clear();
-            } else if (peer->IsOutgoingMsgSent()) {
-              peer->PopOutgoingMsgQueue();  // clean up first pending message
-              if (error.Event()) {
-                logger.Log(LOG_ERR, "main(POLLOUT): "
-                           "Failed to clear outgoing msg queue to %s: %s", 
-                           peer->print().c_str(), error.print().c_str());
-                to_peers.erase(peer);  // no threading on to_peers
-                error.clear();
+            } else {
+              if (peer->IsOutgoingMsgSent()) {
+                peer->PopOutgoingMsgQueue();  // clean up first pending message
+                if (error.Event()) {
+                  logger.Log(LOG_ERR, "main(POLLOUT): "
+                             "Failed to clear outgoing msg queue to %s: %s", 
+                             peer->print().c_str(), error.print().c_str());
+                  to_peers.erase(peer);  // no threading on to_peers
+                  error.clear();
+                }
+              } else {
+                logger.Log(LOG_WARN, "main(POLLOUT): TODO(aka) "
+                           "IsOutgoingMsgSent() %s, returned false, cnt: %d.",
+                           peer->print().c_str(), (int)peer->wbuf_cnt());
               }
             }
 
@@ -1728,7 +1794,7 @@ void initiate_unanalyzed_poll(const ConfInfo& info, SSLContext* ssl_context,
 #endif
   pthread_mutex_unlock(to_peers_mtx);
 
-  logger.Log(LOG_NOTICE, "Initiated poll to %s for next %d unanalyzed flows.",
+  logger.Log(LOG_NOTICE, "Initiating poll to %s for next %d unanalyzed flows.",
              tmp_session.print_2tuple().c_str(), info.database_poll_limit_);
 }
 
@@ -1819,7 +1885,7 @@ void initiate_flow_data_request(const ConfInfo& info, const string& flow,
 #endif
   pthread_mutex_unlock(to_peers_mtx);
 
-  logger.Log(LOG_NOTICE, "Initiated request to %s for flow: %s.",
+  logger.Log(LOG_NOTICE, "Initiating request to %s for flow: %s.",
              tmp_session.print_2tuple().c_str(), flow.c_str());
 }
 
@@ -1903,7 +1969,7 @@ void initiate_analyzed_update(const ConfInfo& info,
   mime_msg_hdr.field_value = tmp_long_buf;
   write_http_hdr.AppendMsgHdr(mime_msg_hdr);
 
-  logger.Log(LOG_WARNING, "initiate_analyzed_update(): Generated HTTP headers:\n%s", write_http_hdr.print_hdr(0).c_str());
+  //logger.Log(LOG_WARNING, "initiate_analyzed_update(): Generated HTTP headers:\n%s", write_http_hdr.print_hdr(0).c_str());
 
   MsgHdr tmp_msg_hdr(MsgHdr::TYPE_HTTP);
   tmp_msg_hdr.Init(++msg_id_hash, write_http_hdr);
@@ -1928,12 +1994,13 @@ void initiate_analyzed_update(const ConfInfo& info,
 #endif
   pthread_mutex_lock(to_peers_mtx);
   to_peers->push_back(tmp_session);
+
 #if DEBUG_MUTEX_LOCK
   warnx("initiate_analyzed_update(): releasing to_peers lock.");
 #endif
   pthread_mutex_unlock(to_peers_mtx);
 
-  logger.Log(LOG_NOTICE, "Initiated update to %s (flow, ts, value): "
+  logger.Log(LOG_NOTICE, "Initiating update to %s (flow, ts, value): "
              "%s, %lld, %d.",
              tmp_session.print_2tuple().c_str(), analyzed->flow_.c_str(), 
              analyzed->time_, update_value);

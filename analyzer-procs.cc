@@ -195,7 +195,7 @@ bool analyzer_process_incoming_msg(ConfInfo* info, SSLContext* ssl_context,
 
       if (peer->rbuf_len() || peer->IsOutgoingDataPending() ||
           peer->whdrs().size()) {
-        logger.Log(LOG_INFO, "analyzer_process_incoming_msg(): TODO(aka) "
+        logger.Log(LOG_WARNING, "analyzer_process_incoming_msg(): TODO(aka) "
                    "peer (%s) still has %ld bytes in rbuf, or "
                    "%d messages in wpending, or %d REQUEST headers left, "
                    "so not removing from queue.", 
@@ -421,7 +421,6 @@ void analyzer_process_response(const ConfInfo& info, const MsgHdr& msg_hdr,
                  "but unable to process", peer->hostname().c_str());
       return;
     }
-
 
     logger.Log(LOG_NOTICE, 
                "Received RESPONSE \'%d %s\' from %s for REQUEST: %s.", 
@@ -974,6 +973,15 @@ void analyzer_process_response(const ConfInfo& info, const MsgHdr& msg_hdr,
         }
       }  // for (rapidjson::SizeType j = 0; j < series.Size(); ++j) {
     }  // for (rapidjson::SizeType i = 0; i < results.Size(); ++i) {
+  } else if (msg_hdr.http_hdr().status_code() == 201 ||
+             msg_hdr.http_hdr().status_code() == 202 ||
+             msg_hdr.http_hdr().status_code() == 204) {
+    logger.Log(LOG_NOTICE, 
+               "Received RESPONSE \'%d %s\' from %s for REQUEST: %s.", 
+               msg_hdr.http_hdr().status_code(), 
+               status_code_phrase(msg_hdr.http_hdr().status_code()),
+               peer->TCPConn::print().c_str(), 
+               req_hdr->http_hdr().print_start_line().c_str());
   } else {  // if (msg_hdr.http_hdr().status_code() == 200) {
     if (msg_body.size() > 0)
       logger.Log(LOG_NOTICE, 
